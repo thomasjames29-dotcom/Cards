@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="manifest.json">
+    <title>Foul Watch Pro</title>
+    <style>
+        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #00ff88; --danger: #ff4444; --placed: #006633; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; padding-bottom: 80px;}
+        
+        /* HEADER */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 15px; }
+        .h1 { margin: 0; font-size: 1.2rem; color: var(--accent); font-weight: bold; text-transform:uppercase; letter-spacing:1px; }
+
+        /* VIEWS */
+        .view-section { display: none; animation: fadeIn 0.3s ease; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* BUTTONS */
+        .scanner-btn {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            color: black; border: none; padding: 20px; width: 100%;
+            border-radius: 12px; font-size: 1.2rem; font-weight: bold;
+            margin-bottom: 20px; cursor: pointer; text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .scanner-btn:active { transform: scale(0.98); }
+
+        /* PLAYER CARD */
+        .grid { display: grid; gap: 10px; }
+        .player-card { 
+            background: var(--card); padding: 15px; border-radius: 8px; 
+            border-left: 5px solid #555; position: relative; margin-bottom: 10px; 
+            transition: all 0.3s ease; 
+        }
+        
+        .player-card.new-alert { animation: flash 2s infinite; border-left-color: var(--danger); }
+        .player-card.bet-placed { background: #0d2b1a; border-left-color: #00ff88 !important; opacity: 0.6; }
+        
+        @keyframes flash { 0% { background: var(--card); } 50% { background: #3a1a1a; } 100% { background: var(--card); } }
+
+        .stat-big { font-size: 1.8rem; font-weight: bold; color: var(--accent); line-height: 1; }
+        .stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
+        .team-name { font-size: 1rem; color: #fff; font-weight: bold; margin-bottom: 4px; }
+        .match-tag { font-size: 0.75rem; color: #aaa; background:#333; padding:2px 6px; border-radius:4px; margin-right:5px;}
+        .cup-badge { background: #7c4dff; color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; vertical-align: middle; text-transform:uppercase;}
+
+        /* CHECKBOX BUTTON */
+        .bet-toggle { 
+            margin-top: 15px; width: 100%; padding: 10px; border-radius: 6px; 
+            border: 1px solid #444; background: transparent; color: #aaa; 
+            cursor: pointer; font-weight: bold; font-size: 0.8rem; text-transform:uppercase;
+        }
+        .bet-placed .bet-toggle { background: #00ff88; color: black; border-color: #00ff88; }
+
+        /* STATUS */
+        .status-bar { text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 15px; }
+        .scanning-dots::after { content: ' .'; animation: dots 1.5s steps(5, end) infinite; }
+        @keyframes dots { 0%, 20% { content: ' .'; } 40% { content: ' ..'; } 60% { content: ' ...'; } 80%, 100% { content: ' ....'; } }
+
+        /* FLOATING ACTION BTN */
+        .fab { position: fixed; bottom: 20px; right: 20px; background: var(--danger); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: none; z-index: 100; cursor: pointer;}
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <span class="h1">Foul Watch Pro</span>
+        <div id="clock" style="font-size:0.9rem; color:#666;">--:--</div>
+    </div>
+
+    <div id="view-home" class="view-section active">
+        
+        <button class="scanner-btn" onclick="App.startScanner()">
+            <span>Start Live Scanner</span> <span>📡</span>
+        </button>
+        
+        <div style="background:#222; padding:15px; border-radius:8px; color:#aaa; font-size:0.9rem; line-height:1.6;">
+            <strong>Scanner Config:</strong><br>
+            • 🌍 <strong>Coverage:</strong> Top 5 Leagues + Scotland + Cups<br>
+            • ⏱️ <strong>Trigger:</strong> Match Time > 60:00<br>
+            • 🛑 <strong>Filter:</strong> Player Fouls ≥ 2<br>
+            • 🎵 <strong>Audio:</strong> Alert on new risk
+        </div>
+
+        <div style="margin-top:20px; text-align:center;">
+            <button onclick="localStorage.removeItem('placedBets'); alert('History Cleared');" style="background:transparent; color:#555; border:1px solid #333; padding:10px 20px; border-radius:20px;">Clear Bet History</button>
+        </div>
+    </div>
+
+    <div id="view-scanner" class="view-section">
+        <div id="scanStatus" class="status-bar">Initializing...</div>
+        
+        <div id="scannerGrid" class="grid"></div>
+        
+        <div id="emptyState" style="display:none; text-align:center; color:#555; padding:50px 20px;">
+            <h3>Scanning Live Matches...</h3>
+            <p>Waiting for players to reach 60+ mins with 2+ fouls.</p>
+        </div>
+
+        <button class="fab" onclick="App.stopScanner()">STOP</button>
+    </div>
+
+<script>
+const Config = {
+    apiKey: "0f29a2f96e9dd4231cee515cc5ec52b0", 
+    apiBaseUrl: "https://v3.football.api-sports.io",
+    // Leagues: Scotland, Eng, Spain, Italy, Ger, Fra, Ned, USA, Aus, Cups
+    leagues: [179,180,183,184, 39,40,45,48, 140,143, 135,137, 78,81, 61,66, 88,90, 253,188, 2,3,848],
+    minTime: 60, // 60th minute
+    minFouls: 2  // 2 fouls
+};
+
+const AudioAlert = {
+    ctx: null,
+    play() {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        const o = this.ctx.createOscillator(); 
+        const g = this.ctx.createGain();
+        o.connect(g); g.connect(this.ctx.destination);
+        o.frequency.value = 880; g.gain.value = 0.1;
+        o.start(); o.stop(this.ctx.currentTime + 0.2);
+    }
+};
+
+const Data = {
+    headers: { "x-rapidapi-key": Config.apiKey, "x-rapidapi-host": "v3.football.api-sports.io" },
+    async getLive() {
+        try {
+            const res = await fetch(`${Config.apiBaseUrl}/fixtures?live=all`, { headers: this.headers });
+            return (await res.json()).response;
+        } catch (e) { console.error(e); return []; }
+    },
+    async getStats(id) {
+        try {
+            const res = await fetch(`${Config.apiBaseUrl}/fixtures?id=${id}`, { headers: this.headers });
+            return (await res.json()).response[0];
+        } catch (e) { return null; }
+    }
+};
+
+const App = {
+    state: { isScanning: false, tracked: new Set() },
+    timer: null,
+
+    startScanner() {
+        AudioAlert.play(); // Prime audio
+        
+        this.state.isScanning = true;
+        document.getElementById('view-home').classList.remove('active');
+        document.getElementById('view-scanner').classList.add('active');
+        
+        this.scan();
+        this.timer = setInterval(() => this.scan(), 60000);
+    },
+
+    stopScanner() {
+        this.state.isScanning = false;
+        clearInterval(this.timer);
+        document.getElementById('view-scanner').classList.remove('active');
+        document.getElementById('view-home').classList.add('active');
+    },
+
+    isPlaced(id) { return JSON.parse(localStorage.getItem('placedBets')||'[]').includes(id); },
+    
+    toggleBet(id) {
+        let bets = JSON.parse(localStorage.getItem('placedBets')||'[]');
+        if(bets.includes(id)) bets = bets.filter(b => b !== id);
+        else bets.push(id);
+        localStorage.setItem('placedBets', JSON.stringify(bets));
+        
+        // Instant UI Update
+        const card = document.getElementById(`card-${id}`);
+        const btn = document.getElementById(`btn-${id}`);
+        if(card) {
+            card.classList.toggle('bet-placed');
+            btn.innerText = card.classList.contains('bet-placed') ? "✅ BET PLACED" : "Mark as Placed";
+        }
+    },
+
+    async scan() {
+        if (!this.state.isScanning) return;
+        this.status("Scanning active matches...");
+
+        const live = await Data.getLive();
+        
+        // STRICT FILTER: Check League ID and Time
+        const matches = live.filter(m => {
+            return Config.leagues.includes(m.league.id) && m.fixture.status.elapsed >= Config.minTime;
+        });
+
+        if (matches.length === 0) {
+            this.status("No matches > 60 mins found.");
+            this.render([]);
+            return;
+        }
+
+        this.status(`Analyzing ${matches.length} matches...`);
+        
+        const details = await Promise.all(matches.map(m => Data.getStats(m.fixture.id)));
+
+        let risks = [];
+        let newAlert = false;
+
+        details.forEach(game => {
+            if (!game) return;
+            const time = game.fixture.status.elapsed;
+            const league = game.league.name;
+            const isCup = league.toLowerCase().includes('cup') || league.toLowerCase().includes('pokal');
+            
+            // Subs check
+            const subbed = new Set();
+            (game.events||[]).forEach(e => { if(e.type==='subst') subbed.add(e.player.id); });
+
+            [...game.players[0].players, ...game.players[1].players].forEach(p => {
+                const stats = p.statistics[0];
+                const fouls = stats.fouls.committed || 0;
+                
+                // STRICT FILTER: Fouls >= 2
+                if (fouls >= Config.minFouls && !subbed.has(p.player.id)) {
+                    const id = p.player.id;
+                    if (!this.state.tracked.has(id)) {
+                        this.state.tracked.add(id);
+                        newAlert = true;
+                        p.isNew = true;
+                    }
+
+                    risks.push({
+                        id: id,
+                        name: p.player.name,
+                        team: stats.team.name,
+                        match: `${game.teams.home.name} v ${game.teams.away.name}`,
+                        league: league,
+                        isCup: isCup,
+                        time: time,
+                        fouls: fouls,
+                        tackles: stats.tackles.total || 0,
+                        booked: stats.cards.yellow > 0,
+                        isNew: p.isNew
+                    });
+                }
+            });
+        });
+
+        risks.sort((a,b) => b.fouls - a.fouls);
+        if(newAlert) AudioAlert.play();
+        
+        this.render(risks);
+        this.status(`Found ${risks.length} targets.`);
+    },
+
+    render(players) {
+        const grid = document.getElementById('scannerGrid');
+        const empty = document.getElementById('emptyState');
+        
+        if (players.length === 0) {
+            grid.innerHTML = ''; empty.style.display = 'block'; return;
+        }
+        empty.style.display = 'none';
+
+        grid.innerHTML = players.map(p => {
+            const placed = this.isPlaced(p.id);
+            return `
+            <div id="card-${p.id}" class="player-card ${p.isNew?'new-alert':''} ${placed?'bet-placed':''}" style="border-left-color:${p.booked?'#ffbb00':'#ff4444'}">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <div class="team-name">${p.name} <span style="font-weight:normal; opacity:0.7">(${p.team})</span></div>
+                        ${p.isCup ? '<span class="cup-badge">CUP GAME</span>' : ''}
+                        <span class="match-tag">${p.time}'</span>
+                        <span class="match-tag" style="background:transparent; padding:0; color:#888">${p.match}</span>
+                    </div>
+                    <div style="text-align:center; min-width:50px;">
+                        <div class="stat-big">${p.fouls}</div>
+                        <div class="stat-label">Fouls</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top:10px; display:flex; gap:15px; font-size:0.8rem; color:#aaa;">
+                    <span>Tackles: <b style="color:white">${p.tackles}</b></span>
+                    <span>${p.booked ? '🟨 Carded' : '⚠️ No Card'}</span>
+                </div>
+
+                <button id="btn-${p.id}" class="bet-toggle" onclick="App.toggleBet(${p.id})">
+                    ${placed ? '✅ BET PLACED' : 'Mark as Placed'}
+                </button>
+            </div>
+            `;
+        }).join('');
+    },
+
+    status(msg) { document.getElementById('scanStatus').innerText = msg; }
+};
+
+// Clock
+setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 1000);
+</script>
+</body>
+</html>
